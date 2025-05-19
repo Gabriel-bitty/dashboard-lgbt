@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 import base64
 import os
+import time
 
 # Configuração da página
 st.set_page_config(layout="wide", page_title="Dashboard PEP & PrEP LGBT", initial_sidebar_state="expanded")
@@ -24,38 +25,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Função para carregar dados com validação
-@st.cache_data
-def carregar_dados_pep():
-    try:
-        df = pd.read_excel("data/data.xlsx", sheet_name="Banco_PEP_UDM")
-        if df.empty:
-            st.error("O arquivo de dados está vazio.")
-            return None
-        df['dt_disp'] = pd.to_datetime(df['dt_disp'], errors='coerce')
-        return df
-    except FileNotFoundError:
-        st.error("Arquivo 'pep_data.xlsx' não encontrado.")
-        return None
-    except Exception as e:
-        st.error(f"Erro ao carregar os dados: {str(e)}")
-        return None
-
-def carregar_dados_prep():
-    try:
-        df = pd.read_excel("data/data.xlsx", sheet_name="Banco_PrEP_UDM")
-        if df.empty:
-            st.error("O arquivo de dados está vazio.")
-            return None
-        df['dt_disp'] = pd.to_datetime(df['dt_disp'], errors='coerce')
-        return df
-    except FileNotFoundError:
-        st.error("Arquivo 'pep_data.xlsx' não encontrado.")
-        return None
-    except Exception as e:
-        st.error(f"Erro ao carregar os dados: {str(e)}")
-        return None
-
 # Função para download de dados filtrados
 def download_csv(df, filename):
     csv = df.to_csv(index=False, encoding='utf-8-sig')
@@ -63,49 +32,91 @@ def download_csv(df, filename):
     href = f'<a href="data:file/csv;base64,{b64}" download="{filename}.csv">Download CSV</a>'
     return href
 
-# Carregar dados
-df = carregar_dados_pep()
-if df is None:
-    st.stop()
+# Função para carregar dados PEP com colunas específicas
+@st.cache_data(ttl=86400)
+def carregar_dados_pep(data_inicio, data_fim, estados):
+    file_path = os.path.join("data", "data.xlsx")
+    if not os.path.exists(file_path):
+        st.error(f"Arquivo '{file_path}' não encontrado no servidor.")
+        return None
+    try:
+        with st.spinner("Carregando dados PEP..."):
+            start_time = time.time()
+            df = pd.read_excel(file_path, sheet_name="Banco_PEP_UDM", 
+                              usecols=['dt_disp', 'UF_UDM', 'Pop', 'tipo_exposicao', 'trabalho_sexual', 'alcool_drogas'])
+            if df.empty:
+                st.error("O arquivo de dados PEP está vazio.")
+                return None
+            df['dt_disp'] = pd.to_datetime(df['dt_disp'], errors='coerce')
+            # Filtrar dados
+            df = df[
+                (df['UF_UDM'].isin(estados)) &
+                (df['dt_disp'].dt.date >= data_inicio) &
+                (df['dt_disp'].dt.date <= data_fim)
+            ].copy()
+            return df
+    except Exception as e:
+        st.error(f"Erro ao carregar os dados PEP: {str(e)}")
+        return None
 
-df2 = carregar_dados_prep()
-if df is None:
-    st.stop()
+# Função para carregar dados PrEP com colunas específicas
+@st.cache_data(ttl=86400)
+def carregar_dados_prep(data_inicio, data_fim, estados):
+    file_path = os.path.join("data", "data.xlsx")
+    if not os.path.exists(file_path):
+        st.error(f"Arquivo '{file_path}' não encontrado no servidor.")
+        return None
+    try:
+        with st.spinner("Carregando dados PrEP..."):
+            start_time = time.time()
+            df = pd.read_excel(file_path, sheet_name="Banco_PrEP_UDM", 
+                              usecols=['dt_disp', 'UF_UDM', 'tp_servico_atendimento', 'tp_esquema_prep', 'tp_testagem_hiv', 'IST_autorrelato'])
+            if df.empty:
+                st.error("O arquivo de dados PrEP está vazio.")
+                return None
+            df['dt_disp'] = pd.to_datetime(df['dt_disp'], errors='coerce')
+            # Filtrar dados
+            df = df[
+                (df['UF_UDM'].isin(estados)) &
+                (df['dt_disp'].dt.date >= data_inicio) &
+                (df['dt_disp'].dt.date <= data_fim)
+            ].copy()
+            return df
+    except Exception as e:
+        st.error(f"Erro ao carregar os dados PrEP: {str(e)}")
+        return None
+
 
 # Sidebar com navegação e filtros
 st.sidebar.title("Navegação e Filtros")
-menu = st.sidebar.radio("Selecione a Página", ["🏠 Home", "💉 PEP", "💊 PrEP"])
+menu = st.sidebar.radio("Selecione a Página", ["🏠 Home", "💉 PEP", "🔒 PrEP"])
 
 # Filtros globais
 st.sidebar.header("Filtros")
 estados = st.sidebar.multiselect("Estados", options=['BA', 'RJ'], default=['BA', 'RJ'])
 
-# Definir intervalo de datas disponível
-min_date = df['dt_disp'].min().date()
-max_date = df['dt_disp'].max().date()
+# Função para determinar o intervalo de datas com base nos dados
+def get_date_range(df_func, *args):
+    df = df_func(*args)
+    if df is not None and not df.empty:
+        min_date = df['dt_disp'].min().date()
+        max_date = df['dt_disp'].max().date()
+        return min_date, max_date
+    return datetime(2020, 1, 1).date(), datetime(2025, 5, 19).date()  # Fallback caso os dados estejam vazios
 
-# Inputs de data separados com validação
-data_inicio = st.sidebar.date_input("Data de Início", value=min_date, min_value=min_date, max_value=max_date)
-data_fim = st.sidebar.date_input("Data de Fim", value=max_date, min_value=min_date, max_value=max_date)
-
-# Validar intervalo de datas
-if data_inicio < min_date or data_fim > max_date:
-    st.sidebar.warning(f"Intervalo inválido! As datas devem estar entre {min_date} e {max_date}. Redefinindo para o intervalo padrão.")
-    data_inicio = min_date
-    data_fim = max_date
-
-# Filtrar dados
-df_filtrado = df[
-    (df['UF_UDM'].isin(estados)) &
-    (df['dt_disp'].dt.date >= data_inicio) &
-    (df['dt_disp'].dt.date <= data_fim)
-]
-
-df2_filtrado = df2[
-    (df2['UF_UDM'].isin(estados)) &
-    (df2['dt_disp'].dt.date >= data_inicio) &
-    (df2['dt_disp'].dt.date <= data_fim)
-]
+# Inicializar datas com base na aba selecionada (ajustado dinamicamente)
+if menu == "💉 PEP":
+    min_date, max_date = get_date_range(carregar_dados_pep, None, None, estados)
+    data_inicio = st.sidebar.date_input("Data de Início", value=min_date, min_value=min_date, max_value=max_date)
+    data_fim = st.sidebar.date_input("Data de Fim", value=max_date, min_value=min_date, max_value=max_date)
+elif menu == "🔒 PrEP":
+    min_date, max_date = get_date_range(carregar_dados_prep, None, None, estados)
+    data_inicio = st.sidebar.date_input("Data de Início", value=min_date, min_value=min_date, max_value=max_date)
+    data_fim = st.sidebar.date_input("Data de Fim", value=max_date, min_value=min_date, max_value=max_date)
+else:  # Home
+    # Fallback para Home (pode ser ajustado conforme necessário)
+    data_inicio = st.sidebar.date_input("Data de Início", value=None)
+    data_fim = st.sidebar.date_input("Data de Fim", value=None)
 
 # Página Home
 if menu == "🏠 Home":
@@ -146,8 +157,9 @@ elif menu == "💉 PEP":
     🔗 **Fonte dos Dados**: [PEP - Profilaxia Pós-Exposição ao HIV](https://www.gov.br/aids/pt-br/indicadores-epidemiologicos/painel-de-monitoramento/painel-pep)
     """, unsafe_allow_html=True)
 
-    # Verificar se há dados após filtragem
-    if df_filtrado.empty:
+    # Definir intervalo de datas com base nos dados PEP
+    df = carregar_dados_pep(data_inicio, data_fim, estados)
+    if df is None or df.empty:
         st.warning("Nenhum dado disponível com os filtros selecionados.")
         st.stop()
 
@@ -155,14 +167,14 @@ elif menu == "💉 PEP":
     st.subheader("Resumo dos Dados")
     col1, col2, col3 = st.columns(3)
     with col1:
-        total_registros = len(df_filtrado)
+        total_registros = len(df)
         st.markdown(f"<div class='metric-card'><strong>Total de Registros</strong><br>{total_registros}</div>", unsafe_allow_html=True)
     with col2:
-        total_ba = len(df_filtrado[df_filtrado['UF_UDM'] == 'BA'])
+        total_ba = len(df[df['UF_UDM'] == 'BA'])
         percent_ba = round((total_ba / total_registros * 100), 2) if total_registros > 0 else 0
         st.markdown(f"<div class='metric-card'><strong>Total BA</strong><br>{total_ba} ({percent_ba}%)</div>", unsafe_allow_html=True)
     with col3:
-        total_rj = len(df_filtrado[df_filtrado['UF_UDM'] == 'RJ'])
+        total_rj = len(df[df['UF_UDM'] == 'RJ'])
         percent_rj = round((total_rj / total_registros * 100), 2) if total_registros > 0 else 0
         st.markdown(f"<div class='metric-card'><strong>Total RJ</strong><br>{total_rj} ({percent_rj}%)</div>", unsafe_allow_html=True)
 
@@ -171,11 +183,11 @@ elif menu == "💉 PEP":
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("#### Distribuição por Grupo Populacional")
-        fig1 = px.histogram(df_filtrado, x='Pop', color='UF_UDM', barmode='group',
+        fig1 = px.histogram(df, x='Pop', color='UF_UDM', barmode='group',
                             histnorm='percent',
                             labels={'Pop': 'Grupo Populacional', 'count': 'Percentual'},
                             title="Grupos Populacionais por Estado (Percentual)",
-                            category_orders={'Pop': sorted(df_filtrado['Pop'].dropna().unique())},
+                            category_orders={'Pop': sorted(df['Pop'].dropna().unique())},
                             text_auto=True)
         fig1.update_traces(textposition='auto', texttemplate='%{y:.2f}%', textfont=dict(color='#000000'))
         fig1.update_layout(
@@ -183,20 +195,14 @@ elif menu == "💉 PEP":
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color="#000000"),
             title=dict(text="Grupos Populacionais por Estado (Percentual)", font=dict(color="#000000")),
-            xaxis=dict(
-                title=dict(text="Grupo Populacional", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Percentual", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="Grupo Populacional", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Percentual", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
         st.markdown("#### Tipo de Exposição")
-        fig2 = px.histogram(df_filtrado, x='tipo_exposicao', color='UF_UDM', barmode='group',
+        fig2 = px.histogram(df, x='tipo_exposicao', color='UF_UDM', barmode='group',
                             histnorm='percent',
                             labels={'tipo_exposicao': 'Tipo de Exposição', 'count': 'Percentual'},
                             title="Tipo de Exposição por Estado (Percentual)",
@@ -207,21 +213,15 @@ elif menu == "💉 PEP":
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color="#000000"),
             title=dict(text="Tipo de Exposição por Estado (Percentual)", font=dict(color="#000000")),
-            xaxis=dict(
-                title=dict(text="Tipo de Exposição", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Percentual", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="Tipo de Exposição", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Percentual", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig2, use_container_width=True)
 
     col3, col4 = st.columns(2)
     with col3:
         st.markdown("#### Trabalho Sexual")
-        fig3 = px.histogram(df_filtrado, x='trabalho_sexual', color='UF_UDM', barmode='group',
+        fig3 = px.histogram(df, x='trabalho_sexual', color='UF_UDM', barmode='group',
                             histnorm='percent',
                             title="Trabalho Sexual por Estado (Percentual)",
                             labels={'trabalho_sexual': 'Trabalho Sexual', 'count': 'Percentual'},
@@ -232,20 +232,14 @@ elif menu == "💉 PEP":
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color="#000000"),
             title=dict(text="Trabalho Sexual por Estado (Percentual)", font=dict(color="#000000")),
-            xaxis=dict(
-                title=dict(text="Trabalho Sexual", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Percentual", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="Trabalho Sexual", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Percentual", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig3, use_container_width=True)
 
     with col4:
         st.markdown("#### Uso de Álcool/Drogas")
-        fig4 = px.histogram(df_filtrado, x='alcool_drogas', color='UF_UDM', barmode='group',
+        fig4 = px.histogram(df, x='alcool_drogas', color='UF_UDM', barmode='group',
                             histnorm='percent',
                             title="Uso de Álcool/Drogas por Estado (Percentual)",
                             labels={'alcool_drogas': 'Álcool/Drogas', 'count': 'Percentual'},
@@ -256,26 +250,20 @@ elif menu == "💉 PEP":
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color="#000000"),
             title=dict(text="Uso de Álcool/Drogas por Estado (Percentual)", font=dict(color="#000000")),
-            xaxis=dict(
-                title=dict(text="Álcool/Drogas", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Percentual", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="Álcool/Drogas", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Percentual", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig4, use_container_width=True)
 
-    # Nova seção de comparação com valores brutos
+    # Visualizações com valores brutos
     st.subheader("Visualizações (Valores Brutos)")
     col5, col6 = st.columns(2)
     with col5:
         st.markdown("#### Distribuição por Grupo Populacional (Bruto)")
-        fig5 = px.histogram(df_filtrado, x='Pop', color='UF_UDM', barmode='group',
+        fig5 = px.histogram(df, x='Pop', color='UF_UDM', barmode='group',
                             labels={'Pop': 'Grupo Populacional', 'count': 'Quantidade'},
                             title="Grupos Populacionais por Estado (Bruto)",
-                            category_orders={'Pop': sorted(df_filtrado['Pop'].dropna().unique())},
+                            category_orders={'Pop': sorted(df['Pop'].dropna().unique())},
                             text_auto=True)
         fig5.update_traces(textposition='auto', texttemplate='%{y}', textfont=dict(color='#000000'))
         fig5.update_layout(
@@ -283,20 +271,14 @@ elif menu == "💉 PEP":
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color="#000000"),
             title=dict(text="Grupos Populacionais por Estado (Bruto)", font=dict(color="#000000")),
-            xaxis=dict(
-                title=dict(text="Grupo Populacional", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Quantidade", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="Grupo Populacional", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Quantidade", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig5, use_container_width=True)
 
     with col6:
         st.markdown("#### Tipo de Exposição (Bruto)")
-        fig6 = px.histogram(df_filtrado, x='tipo_exposicao', color='UF_UDM', barmode='group',
+        fig6 = px.histogram(df, x='tipo_exposicao', color='UF_UDM', barmode='group',
                             labels={'tipo_exposicao': 'Tipo de Exposição', 'count': 'Quantidade'},
                             title="Tipo de Exposição por Estado (Bruto)",
                             text_auto=True)
@@ -306,34 +288,26 @@ elif menu == "💉 PEP":
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color="#000000"),
             title=dict(text="Tipo de Exposição por Estado (Bruto)", font=dict(color="#000000")),
-            xaxis=dict(
-                title=dict(text="Tipo de Exposição", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Quantidade", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="Tipo de Exposição", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Quantidade", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig6, use_container_width=True)
 
     # Download de dados filtrados
     st.subheader("Exportar Dados")
-    st.markdown(download_csv(df_filtrado, "dados_filtrados_pep"), unsafe_allow_html=True)
+    st.markdown(download_csv(df, "dados_filtrados_pep"), unsafe_allow_html=True)
 
 # Página PrEP
-# ... (código anterior até a definição de df2_filtrado permanece o mesmo)
-
-# Página PrEP
-elif menu == "💊 PrEP":
+elif menu == "🔒 PrEP":
     st.title("📊 Análise Comparativa da Dispersão de PrEP - BA x RJ")
     st.warning("Os dados foram coletados pela **Agência Nacional de Saúde (ANS)** e representam 80% de registros do RJ e apenas 20% da BA, o que pode impactar as comparações. Use os dados da BA com cautela devido ao tamanho limitado da amostra.")
     st.markdown("""
     🔗 **Fonte dos Dados**: [PrEP - Profilaxia Pré-Exposição ao HIV](https://www.gov.br/aids/pt-br/indicadores-epidemiologicos/painel-de-monitoramento/painel-prep)
     """, unsafe_allow_html=True)
 
-    # Verificar se há dados após filtragem
-    if df2_filtrado.empty:
+    # Definir intervalo de datas com base nos dados PrEP
+    df = carregar_dados_prep(data_inicio, data_fim, estados)
+    if df is None or df.empty:
         st.warning("Nenhum dado disponível com os filtros selecionados.")
         st.stop()
 
@@ -341,73 +315,39 @@ elif menu == "💊 PrEP":
     st.subheader("Resumo dos Dados")
     col1, col2, col3 = st.columns(3)
     with col1:
-        total_registros = len(df2_filtrado)
+        total_registros = len(df)
         st.markdown(f"<div class='metric-card'><strong>Total de Registros</strong><br>{total_registros}</div>", unsafe_allow_html=True)
     with col2:
-        total_ba = len(df2_filtrado[df2_filtrado['UF_UDM'] == 'BA'])
+        total_ba = len(df[df['UF_UDM'] == 'BA'])
         percent_ba = round((total_ba / total_registros * 100), 2) if total_registros > 0 else 0
         st.markdown(f"<div class='metric-card'><strong>Total BA</strong><br>{total_ba} ({percent_ba}%)</div>", unsafe_allow_html=True)
     with col3:
-        total_rj = len(df2_filtrado[df2_filtrado['UF_UDM'] == 'RJ'])
+        total_rj = len(df[df['UF_UDM'] == 'RJ'])
         percent_rj = round((total_rj / total_registros * 100), 2) if total_registros > 0 else 0
         st.markdown(f"<div class='metric-card'><strong>Total RJ</strong><br>{total_rj} ({percent_rj}%)</div>", unsafe_allow_html=True)
 
-    # Ajustar gráficos para incluir anos com zero contagens
     st.subheader("Visualizações (Percentuais)")
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("#### Tipo de Serviço de Atendimento")
-        # Garantir que todos os anos estejam representados
-        df2_temp = df2_filtrado.copy()
-        if not df2_temp['dt_disp'].empty:
-            min_year = df2_temp['dt_disp'].min().year
-            max_year = df2_temp['dt_disp'].max().year
-            all_years = pd.DataFrame({'dt_disp': pd.date_range(start=f"{min_year}-01-01", end=f"{max_year}-12-31", freq='D')})
-            df2_temp = pd.concat([df2_temp, all_years]).drop_duplicates(subset=['dt_disp']).sort_values('dt_disp')
-            fig1 = px.histogram(df2_temp, x='tp_servico_atendimento', color='UF_UDM', barmode='group',
-                                histnorm='percent',
-                                labels={'tp_servico_atendimento': 'Tipo de Serviço', 'count': 'Percentual'},
-                                title="Tipo de Serviço por Estado (Percentual)",
-                                text_auto=True)
-            fig1.update_traces(textposition='auto', texttemplate='%{y:.2f}%')
-            fig1.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font_color="#000000",
-                xaxis=dict(
-                    title=dict(text="Tipo de Serviço", font=dict(color="#000000")),
-                    tickfont=dict(color="#000000")
-                ),
-                yaxis=dict(
-                    title=dict(text="Percentual", font=dict(color="#000000")),
-                    tickfont=dict(color="#000000")
-                )
-            )
-        else:
-            fig1 = px.histogram(df2_filtrado, x='tp_servico_atendimento', color='UF_UDM', barmode='group',
-                                histnorm='percent',
-                                labels={'tp_servico_atendimento': 'Tipo de Serviço', 'count': 'Percentual'},
-                                title="Tipo de Serviço por Estado (Percentual)",
-                                text_auto=True)
-            fig1.update_traces(textposition='auto', texttemplate='%{y:.2f}%')
-            fig1.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font_color="#000000",
-                xaxis=dict(
-                    title=dict(text="Tipo de Serviço", font=dict(color="#000000")),
-                    tickfont=dict(color="#000000")
-                ),
-                yaxis=dict(
-                    title=dict(text="Percentual", font=dict(color="#000000")),
-                    tickfont=dict(color="#000000")
-                )
-            )
+        fig1 = px.histogram(df, x='tp_servico_atendimento', color='UF_UDM', barmode='group',
+                            histnorm='percent',
+                            labels={'tp_servico_atendimento': 'Tipo de Serviço', 'count': 'Percentual'},
+                            title="Tipo de Serviço por Estado (Percentual)",
+                            text_auto=True)
+        fig1.update_traces(textposition='auto', texttemplate='%{y:.2f}%')
+        fig1.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font_color="#000000",
+            xaxis=dict(title=dict(text="Tipo de Serviço", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Percentual", font=dict(color="#000000")), tickfont=dict(color="#000000"))
+        )
         st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
         st.markdown("#### Tipo de Esquema PrEP")
-        fig2 = px.histogram(df2_filtrado, x='tp_esquema_prep', color='UF_UDM', barmode='group',
+        fig2 = px.histogram(df, x='tp_esquema_prep', color='UF_UDM', barmode='group',
                             histnorm='percent',
                             labels={'tp_esquema_prep': 'Esquema PrEP', 'count': 'Percentual'},
                             title="Esquema PrEP por Estado (Percentual)",
@@ -417,21 +357,15 @@ elif menu == "💊 PrEP":
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font_color="#000000",
-            xaxis=dict(
-                title=dict(text="Esquema PrEP", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Percentual", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="Esquema PrEP", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Percentual", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig2, use_container_width=True)
 
     col3, col4 = st.columns(2)
     with col3:
         st.markdown("#### Tipo de Testagem HIV")
-        fig3 = px.histogram(df2_filtrado, x='tp_testagem_hiv', color='UF_UDM', barmode='group',
+        fig3 = px.histogram(df, x='tp_testagem_hiv', color='UF_UDM', barmode='group',
                             histnorm='percent',
                             title="Testagem HIV por Estado (Percentual)",
                             labels={'tp_testagem_hiv': 'Testagem HIV', 'count': 'Percentual'},
@@ -441,20 +375,14 @@ elif menu == "💊 PrEP":
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font_color="#000000",
-            xaxis=dict(
-                title=dict(text="Testagem HIV", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Percentual", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="Testagem HIV", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Percentual", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig3, use_container_width=True)
 
     with col4:
         st.markdown("#### IST Autorrelatada")
-        fig4 = px.histogram(df2_filtrado, x='IST_autorrelato', color='UF_UDM', barmode='group',
+        fig4 = px.histogram(df, x='IST_autorrelato', color='UF_UDM', barmode='group',
                             histnorm='percent',
                             title="IST Autorrelatada por Estado (Percentual)",
                             labels={'IST_autorrelato': 'IST Autorrelatada', 'count': 'Percentual'},
@@ -464,14 +392,8 @@ elif menu == "💊 PrEP":
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font_color="#000000",
-            xaxis=dict(
-                title=dict(text="IST Autorrelatada", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Percentual", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="IST Autorrelatada", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Percentual", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig4, use_container_width=True)
 
@@ -480,7 +402,7 @@ elif menu == "💊 PrEP":
     col5, col6 = st.columns(2)
     with col5:
         st.markdown("#### Tipo de Serviço de Atendimento (Bruto)")
-        fig5 = px.histogram(df2_filtrado, x='tp_servico_atendimento', color='UF_UDM', barmode='group',
+        fig5 = px.histogram(df, x='tp_servico_atendimento', color='UF_UDM', barmode='group',
                             labels={'tp_servico_atendimento': 'Tipo de Serviço', 'count': 'Quantidade'},
                             title="Tipo de Serviço por Estado (Bruto)",
                             text_auto=True)
@@ -489,20 +411,14 @@ elif menu == "💊 PrEP":
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font_color="#000000",
-            xaxis=dict(
-                title=dict(text="Tipo de Serviço", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Quantidade", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="Tipo de Serviço", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Quantidade", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig5, use_container_width=True)
 
     with col6:
         st.markdown("#### Tipo de Esquema PrEP (Bruto)")
-        fig6 = px.histogram(df2_filtrado, x='tp_esquema_prep', color='UF_UDM', barmode='group',
+        fig6 = px.histogram(df, x='tp_esquema_prep', color='UF_UDM', barmode='group',
                             labels={'tp_esquema_prep': 'Esquema PrEP', 'count': 'Quantidade'},
                             title="Esquema PrEP por Estado (Bruto)",
                             text_auto=True)
@@ -511,17 +427,11 @@ elif menu == "💊 PrEP":
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font_color="#000000",
-            xaxis=dict(
-                title=dict(text="Esquema PrEP", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            ),
-            yaxis=dict(
-                title=dict(text="Quantidade", font=dict(color="#000000")),
-                tickfont=dict(color="#000000")
-            )
+            xaxis=dict(title=dict(text="Esquema PrEP", font=dict(color="#000000")), tickfont=dict(color="#000000")),
+            yaxis=dict(title=dict(text="Quantidade", font=dict(color="#000000")), tickfont=dict(color="#000000"))
         )
         st.plotly_chart(fig6, use_container_width=True)
 
     # Download de dados filtrados
     st.subheader("Exportar Dados")
-    st.markdown(download_csv(df2_filtrado, "dados_filtrados_prep"), unsafe_allow_html=True)
+    st.markdown(download_csv(df, "dados_filtrados_prep"), unsafe_allow_html=True)
