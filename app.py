@@ -4,22 +4,23 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import base64
+import os
 
 # Configuração da página
 st.set_page_config(layout="wide", page_title="Dashboard PEP LGBT", initial_sidebar_state="expanded")
 
-# Estilo CSS personalizado
+# Aplicar tema Light com CSS ajustado
 st.markdown("""
     <style>
-    .main {padding: 20px; background-color: #1e1e1e; color: #ffffff;}
-    .stSidebar {background-color: #2c2c2c; color: #ffffff;}
-    .stButton>button {background-color: #4CAF50; color: white; border-radius: 5px;}
-    h1, h2, h3 {color: #ffffff; font-family: 'Arial', sans-serif;}
-    .metric-card {background-color: #333333; padding: 10px; border-radius: 5px; text-align: center; color: #ffffff;}
-    .stRadio > label {color: #ffffff;}
-    .stSelectbox > label {color: #ffffff;}
-    .stMarkdown {color: #ffffff;}
-    .stWarning {color: #ffcc00;}
+    .stMainBlockContainer {padding: 20px; background-color: #ffffff; color: #333333;}
+    .stAppHeader {background-color: #ffffff;}
+    .stSidebar {background-color: #f0f0f0; color: #333333;}
+    h1, h2, h3, p {color: #333333; font-family: 'Arial', sans-serif;}
+    .metric-card {background-color: #e0e0e0; padding: 10px; border-radius: 5px; text-align: center; color: #333333;}
+    .stRadio > label {color: #333333;}
+    .stSelectbox > label {color: #333333;}
+    .stMarkdown {color: #333333;}
+    .stWarning {color: #ff9900; background-color: #fff3e6; padding: 10px; border-radius: 5px;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -34,7 +35,7 @@ def carregar_dados():
         df['dt_disp'] = pd.to_datetime(df['dt_disp'], errors='coerce')
         return df
     except FileNotFoundError:
-        st.error("Arquivo 'pep_data.xlsx' não encontrado na pasta 'data'.")
+        st.error("Arquivo 'pep_data.xlsx' não encontrado.")
         return None
     except Exception as e:
         st.error(f"Erro ao carregar os dados: {str(e)}")
@@ -88,8 +89,7 @@ if menu == "🏠 Home":
     Este painel interativo tem como objetivo **visualizar e comparar a distribuição da Profilaxia Pós-Exposição (PEP)** 
     entre populações vulneráveis nos estados da **Bahia (BA)** e do **Rio de Janeiro (RJ)**.
 
-    🔍 **Nota**: Os dados foram coletados pela **Agência Nacional de Saúde (ANS)**
-    🔗 **Fonte dos Dados**: [PEP - Profilaxia Pós-Exposição ao HIV](https://www.gov.br/aids/pt-br/indicadores-epidemiologicos/painel-de-monitoramento/painel-pep)
+    🔍 **Nota**: Os dados apresentados são fictícios ou reduzidos para fins de testes e desenvolvimento.
 
     ---
     ### Objetivos:
@@ -153,14 +153,21 @@ elif menu == "💉 PEP":
                             labels={'Pop': 'Grupo Populacional', 'count': 'Percentual'},
                             title="Grupos Populacionais por Estado (Percentual)",
                             category_orders={'Pop': sorted(df_filtrado['Pop'].dropna().unique())},
-                            text_auto=True)  # Adiciona rótulos automáticos
-        fig1.update_traces(textposition='auto', texttemplate='%{y:.2f}%')  # Posiciona rótulos e limita a 2 decimais
+                            text_auto=True)
+        fig1.update_traces(textposition='auto', texttemplate='%{y:.2f}%', textfont=dict(color='#000000'))
         fig1.update_layout(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            font_color="#ffffff",
-            xaxis_title="Grupo Populacional",
-            yaxis_title="Percentual"
+            font=dict(color="#000000"),
+            title=dict(text="Grupos Populacionais por Estado (Percentual)", font=dict(color="#000000")),
+            xaxis=dict(
+                title=dict(text="Grupo Populacional", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            ),
+            yaxis=dict(
+                title=dict(text="Percentual", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            )
         )
         st.plotly_chart(fig1, use_container_width=True)
 
@@ -171,13 +178,20 @@ elif menu == "💉 PEP":
                             labels={'tipo_exposicao': 'Tipo de Exposição', 'count': 'Percentual'},
                             title="Tipo de Exposição por Estado (Percentual)",
                             text_auto=True)
-        fig2.update_traces(textposition='auto', texttemplate='%{y:.2f}%')
+        fig2.update_traces(textposition='auto', texttemplate='%{y:.2f}%', textfont=dict(color='#000000'))
         fig2.update_layout(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            font_color="#ffffff",
-            xaxis_title="Tipo de Exposição",
-            yaxis_title="Percentual"
+            font=dict(color="#000000"),
+            title=dict(text="Tipo de Exposição por Estado (Percentual)", font=dict(color="#000000")),
+            xaxis=dict(
+                title=dict(text="Tipo de Exposição", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            ),
+            yaxis=dict(
+                title=dict(text="Percentual", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            )
         )
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -189,13 +203,20 @@ elif menu == "💉 PEP":
                             title="Trabalho Sexual por Estado (Percentual)",
                             labels={'trabalho_sexual': 'Trabalho Sexual', 'count': 'Percentual'},
                             text_auto=True)
-        fig3.update_traces(textposition='auto', texttemplate='%{y:.2f}%')
+        fig3.update_traces(textposition='auto', texttemplate='%{y:.2f}%', textfont=dict(color='#000000'))
         fig3.update_layout(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            font_color="#ffffff",
-            xaxis_title="Trabalho Sexual",
-            yaxis_title="Percentual"
+            font=dict(color="#000000"),
+            title=dict(text="Trabalho Sexual por Estado (Percentual)", font=dict(color="#000000")),
+            xaxis=dict(
+                title=dict(text="Trabalho Sexual", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            ),
+            yaxis=dict(
+                title=dict(text="Percentual", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            )
         )
         st.plotly_chart(fig3, use_container_width=True)
 
@@ -206,13 +227,20 @@ elif menu == "💉 PEP":
                             title="Uso de Álcool/Drogas por Estado (Percentual)",
                             labels={'alcool_drogas': 'Álcool/Drogas', 'count': 'Percentual'},
                             text_auto=True)
-        fig4.update_traces(textposition='auto', texttemplate='%{y:.2f}%')
+        fig4.update_traces(textposition='auto', texttemplate='%{y:.2f}%', textfont=dict(color='#000000'))
         fig4.update_layout(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            font_color="#ffffff",
-            xaxis_title="Álcool/Drogas",
-            yaxis_title="Percentual"
+            font=dict(color="#000000"),
+            title=dict(text="Uso de Álcool/Drogas por Estado (Percentual)", font=dict(color="#000000")),
+            xaxis=dict(
+                title=dict(text="Álcool/Drogas", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            ),
+            yaxis=dict(
+                title=dict(text="Percentual", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            )
         )
         st.plotly_chart(fig4, use_container_width=True)
 
@@ -226,13 +254,20 @@ elif menu == "💉 PEP":
                             title="Grupos Populacionais por Estado (Bruto)",
                             category_orders={'Pop': sorted(df_filtrado['Pop'].dropna().unique())},
                             text_auto=True)
-        fig5.update_traces(textposition='auto', texttemplate='%{y}')  # Mostra valores brutos
+        fig5.update_traces(textposition='auto', texttemplate='%{y}', textfont=dict(color='#000000'))
         fig5.update_layout(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            font_color="#ffffff",
-            xaxis_title="Grupo Populacional",
-            yaxis_title="Quantidade"
+            font=dict(color="#000000"),
+            title=dict(text="Grupos Populacionais por Estado (Bruto)", font=dict(color="#000000")),
+            xaxis=dict(
+                title=dict(text="Grupo Populacional", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            ),
+            yaxis=dict(
+                title=dict(text="Quantidade", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            )
         )
         st.plotly_chart(fig5, use_container_width=True)
 
@@ -242,13 +277,20 @@ elif menu == "💉 PEP":
                             labels={'tipo_exposicao': 'Tipo de Exposição', 'count': 'Quantidade'},
                             title="Tipo de Exposição por Estado (Bruto)",
                             text_auto=True)
-        fig6.update_traces(textposition='auto', texttemplate='%{y}')
+        fig6.update_traces(textposition='auto', texttemplate='%{y}', textfont=dict(color='#000000'))
         fig6.update_layout(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            font_color="#ffffff",
-            xaxis_title="Tipo de Exposição",
-            yaxis_title="Quantidade"
+            font=dict(color="#000000"),
+            title=dict(text="Tipo de Exposição por Estado (Bruto)", font=dict(color="#000000")),
+            xaxis=dict(
+                title=dict(text="Tipo de Exposição", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            ),
+            yaxis=dict(
+                title=dict(text="Quantidade", font=dict(color="#000000")),
+                tickfont=dict(color="#000000")
+            )
         )
         st.plotly_chart(fig6, use_container_width=True)
 
